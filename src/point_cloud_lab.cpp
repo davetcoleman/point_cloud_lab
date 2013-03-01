@@ -22,9 +22,6 @@
 #include <pcl_ros/transforms.h>
 
 #include <cmath>
-#include <algorithm>
-
-//#include <iostream> // TODO: remove this dep
 
 namespace point_cloud_lab
 {
@@ -39,6 +36,8 @@ private:
   ros::Publisher filtered_pub_; // filtered point cloud for testing the algorithms
   ros::Publisher block_pose_pub_; // publishes to rviz
   tf::TransformListener tf_listener_;
+  tf::StampedTransform transform_;
+  bool has_transform_;
 
   geometry_msgs::PoseArray block_poses_;
 
@@ -50,9 +49,10 @@ private:
 
 public:
 
-  PointCloudLab() :
+  PointCloudLab(bool pointless) : // we need a parameter here for some reason?
     nh_("~"),
-    viewer_("Simple Cloud Viewer")
+    viewer_("Simple Cloud Viewer"),
+    has_transform_(false)
   {
     // Parameters
     base_link_ = "/base_link";
@@ -69,6 +69,9 @@ public:
 
     // Publish interactive markers for blocks
     block_pose_pub_ = nh_.advertise< geometry_msgs::PoseArray >("/", 1, true);
+
+
+    ROS_INFO("Waiting to recieve point cloud...");
   }
 
 
@@ -84,19 +87,8 @@ public:
     pcl::PointCloud<pcl::PointXYZRGB>::Ptr cloud(new pcl::PointCloud<pcl::PointXYZRGB>);
     pcl::fromROSMsg(*msg, *cloud);
 
-    // Make new point cloud that is in our working frame
-    pcl::PointCloud<pcl::PointXYZRGB>::Ptr cloud_transformed(new pcl::PointCloud<pcl::PointXYZRGB>);
+    viewer_.showCloud(cloud);
 
-    // Transform to whatever frame we're working in, probably the arm's base frame, ie "base_link"
-    tf_listener_.waitForTransform(std::string(base_link_), cloud->header.frame_id,
-                                  cloud->header.stamp, ros::Duration(1.0));
-    if(!pcl_ros::transformPointCloud(std::string(base_link_), *cloud, *cloud_transformed, tf_listener_))
-    {
-      ROS_ERROR("Error converting to desired frame");
-      return;
-    }
-
-    viewer_.showCloud (cloud_transformed);
 
     // YOUR CODE HERE ----------------------------------------------------------------------------------------
     // But actually you can edit anything in this file :)
@@ -110,29 +102,32 @@ public:
 
 
 
+    // Hint:
+    // If you are using rviz you can publish "filtered" point clouds to see the intermediate steps of your
+    // PCL process, e.g.:
+    //   Publish a point cloud of filtered data that was not part of table
+    //   filtered_pub_ = nh_.advertise< pcl::PointCloud<pcl::PointXYZRGB> >("block_output", 1);
 
-
-
-
-    // END YOUR CODE HERE ------------------------------------------------------------------------------------
 
     // Fill in the results
     double block_x = 0;
     double block_y = 0;
     double block_z = 0;
     double block_theta = 0;
-    
+
+    // END YOUR CODE HERE ------------------------------------------------------------------------------------
+
     // Add the results to a Rviz marker and publish it
     addBlock( block_x, block_y, block_z, block_theta );
 
     if(block_poses_.poses.size() > 0)
     {
       block_pose_pub_.publish(block_poses_);
-      ROS_INFO(" Finished");
+      ROS_INFO_STREAM("Found " << block_poses_.poses.size() << " blocks this iteration");
     }
     else
     {
-      ROS_INFO(" Couldn't find any blocks this iteration!");
+      ROS_INFO("Couldn't find any blocks this iteration!");
     }
   }
 
@@ -150,8 +145,7 @@ public:
     block_pose.orientation.z = quat.z();
     block_pose.orientation.w = quat.w();
 
-    ROS_INFO_STREAM("Added block: \n" << block_pose );
-
+    //ROS_INFO_STREAM("Added block: \n" << block_pose );
     block_poses_.poses.push_back(block_pose);
   }
 
@@ -165,7 +159,7 @@ int main(int argc, char** argv)
 
   ros::init(argc, argv, "point_cloud_lab");
 
-  point_cloud_lab::PointCloudLab detector();
+  point_cloud_lab::PointCloudLab detector(true);
 
   ros::spin();
   return 0;
